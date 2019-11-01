@@ -1,5 +1,7 @@
 package com.es.gantry.images;
 
+import com.es.gantry.auth.Auth;
+import com.es.gantry.auth.ThreadLocalAuthService;
 import com.es.gantry.ssh.SshConnectionService;
 import com.es.shell.ExecuteRequest;
 import com.es.shell.ExecuteResult;
@@ -9,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
@@ -23,12 +26,17 @@ public class ShellDockerClientImageService implements ImageService {
     @Autowired
     private SshConnectionService sshConnectionService;
 
+    @Autowired
+    ThreadLocalAuthService authService;
+
     private static Logger logger = LoggerFactory.getLogger(ShellDockerClientImageService.class);
 
     private static final String IMAGE_CREATED_DATE_FORMAT = "yyyy-MM-dd HH:mm:ss Z";
 
     private static final String IMAGE_LS_WITH_FORMAT =
             "docker images --format=\"{{.ID}},{{.Repository}},{{.Tag}},{{.CreatedAt}},{{.CreatedSince}},{{.Size}}\"";
+
+    private static final String FILTER_ARG = " --filter ";
 
     @Override
     public List<Image> findAll() {
@@ -41,13 +49,22 @@ public class ShellDockerClientImageService implements ImageService {
         List<Image> images = new ArrayList<>();
 
         try {
-            String host = "nerf001.core.int.bf1.corp.pvt";
-            String user = "ansible";
-            String key = "integration_ansible.pem";
+            Auth auth = this.authService.getAuth();
+            if (auth==null)
+                throw new Exception("Error in authentication");
+
+            String host = auth.getHost();
+            String user = auth.getUser();
+            String key = auth.getKey();
+
             ExecuteRequest request =
                     this.sshConnectionService.getConnectionForHost(host,user, key);
 
-            request.setCommand(Arrays.asList(IMAGE_LS_WITH_FORMAT));
+            String command = IMAGE_LS_WITH_FORMAT;
+            if (!StringUtils.isEmpty(filter)) {
+                command += FILTER_ARG + filter;
+            }
+            request.setCommand(Arrays.asList(command));
             ExecuteResult rs = shell.execute(request);
             if (rs.getReturnStatus() == ExecuteResult.CommandStatus.COMMAND_RAN_SUCCESSFUL &&
                     rs.getExitStatus() == 0) {

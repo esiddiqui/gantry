@@ -17,8 +17,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.sql.Timestamp;
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -28,8 +26,6 @@ public class AuthController {
 
     private static final String TEST_SSH_CMD = "hostname -f";
 
-    public static Map<String,Auth> authMap = new HashMap<>();
-
     private static final Logger logger = LoggerFactory.getLogger(AuthController.class);
 
     private Shell shell = new JSchShell();
@@ -37,6 +33,8 @@ public class AuthController {
     @Autowired
     private SshConnectionService sshConnectionService;
 
+    @Autowired
+    private AuthService authService;
 
     @RequestMapping(method = RequestMethod.POST, path="/api/v1/auth/tokens",
             produces = "application/json", consumes = "application/json")
@@ -56,7 +54,7 @@ public class AuthController {
                 auth.setUser(user);
                 auth.setToken(UUID.randomUUID().toString());
                 auth.setExpiry(new Timestamp(System.currentTimeMillis()+SIX_HOURS));
-                AuthController.authMap.put(auth.getToken(),auth);
+                this.authService.saveAuthRecord(auth);
                 return ResponseEntity.status(HttpStatus.OK).body(auth);
             } else {
                 String message = rs.getOut().get(0);
