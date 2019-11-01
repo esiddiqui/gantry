@@ -1,15 +1,13 @@
 package com.es.gantry.images;
 
 import com.es.gantry.auth.Auth;
-import com.es.gantry.auth.ThreadLocalAuthService;
-import com.es.gantry.ssh.SshConnectionService;
+import com.es.gantry.common.ShellClientService;
 import com.es.shell.ExecuteRequest;
 import com.es.shell.ExecuteResult;
-import com.es.shell.JSchShell;
-import com.es.shell.Shell;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -19,15 +17,8 @@ import java.util.*;
 
 
 @Service
-public class ShellDockerClientImageService implements ImageService {
-
-    Shell shell = new JSchShell();
-
-    @Autowired
-    private SshConnectionService sshConnectionService;
-
-    @Autowired
-    ThreadLocalAuthService authService;
+public class ShellDockerClientImageService
+            extends ShellClientService implements ImageService {
 
     private static Logger logger = LoggerFactory.getLogger(ShellDockerClientImageService.class);
 
@@ -36,11 +27,20 @@ public class ShellDockerClientImageService implements ImageService {
     private static final String IMAGE_LS_WITH_FORMAT =
             "docker images --format=\"{{.ID}},{{.Repository}},{{.Tag}},{{.CreatedAt}},{{.CreatedSince}},{{.Size}}\"";
 
+    private static final String IMAGE_INSPECT = "docker inspect %s";
+
     private static final String FILTER_ARG = " --filter ";
+
 
     @Override
     public List<Image> findAll() {
         return this.findAll(null);
+    }
+
+    @Override
+    public Optional<Image> findById(String imageId) {
+        return this.findAll().stream()
+                .filter(img->img.getId().equalsIgnoreCase(imageId)).findFirst();
     }
 
 
@@ -49,7 +49,7 @@ public class ShellDockerClientImageService implements ImageService {
         List<Image> images = new ArrayList<>();
 
         try {
-            Auth auth = this.authService.getAuth();
+            Auth auth = authService.getAuth();
             if (auth==null)
                 throw new Exception("Error in authentication");
 
@@ -58,7 +58,7 @@ public class ShellDockerClientImageService implements ImageService {
             String key = auth.getKey();
 
             ExecuteRequest request =
-                    this.sshConnectionService.getConnectionForHost(host,user, key);
+                    sshConnectionService.getConnectionForHost(host,user, key);
 
             String command = IMAGE_LS_WITH_FORMAT;
             if (!StringUtils.isEmpty(filter)) {
@@ -97,12 +97,23 @@ public class ShellDockerClientImageService implements ImageService {
     }
 
 
-
-
     @Override
-    public Optional<Image> findById(String imageId) {
-        return this.findAll().stream().filter(img->img.getId().equalsIgnoreCase(imageId))
-                .findFirst();
+    public List<HashMap<String,Object>> inspect(String imageId) {
+        try {
+            ExecuteResult rs = this.exec(String.format(IMAGE_INSPECT,imageId));
+            if (rs.getReturnStatus()== ExecuteResult.CommandStatus.COMMAND_RAN_SUCCESSFUL) {
+                StringBuilder output = new StringBuilder();
+                rs.getOut().stream().forEach(output::append);
+                logger.info(output.toString());
+                String json = output.toString();
+                List<HashMap<String,Object>> containers = new ObjectMapper().readValue(
+                        json,new TypeReference<List<HashMap<String,Object>>>(){});
+                return containers;
+            } else
+                return null;
+        } catch (Exception ex) {
+            return null;
+        }
     }
 
 }

@@ -1,15 +1,12 @@
 package com.es.gantry.containers;
 
-import com.es.gantry.auth.Auth;
-import com.es.gantry.auth.ThreadLocalAuthService;
-import com.es.gantry.ssh.SshConnectionService;
-import com.es.shell.ExecuteRequest;
+
+import com.es.gantry.common.ShellClientService;
 import com.es.shell.ExecuteResult;
-import com.es.shell.JSchShell;
-import com.es.shell.Shell;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -18,7 +15,8 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 
 @Service
-public class ShellDockerClientContainerService implements ContainerService {
+public class ShellDockerClientContainerService
+        extends ShellClientService implements ContainerService {
 
     private static final Logger logger = LoggerFactory.getLogger(ShellDockerClientContainerService.class);
 
@@ -27,53 +25,41 @@ public class ShellDockerClientContainerService implements ContainerService {
     private static final String CONTAINER_LS_WITH_FORMAT =
             "docker ps --format=\"{{.ID}},{{.Image}},{{.Command}},{{.CreatedAt}},{{.Status}},{{.Ports}},{{.Names}},{{.Networks}}\"";
 
+    private static final String CONTAINER_INSPECT ="docker inspect %s";
+
     private static final String FILTER_ARG = " --filter ";
 
-    private Shell shell = new JSchShell();
-
-    @Autowired
-    SshConnectionService sshConnectionService;
-
-    @Autowired
-    ThreadLocalAuthService authService;
-
+    @Override
     public List<Container> findAll() {
         return findAll(null);
     }
 
+    @Override
+    public Optional<Container> findById(String containerId) {
+        List<Container> containers = this.findAll("id="+containerId);
+        if (containers.size()==0)
+            return Optional.empty();
+        else
+            return Optional.of(containers.get(0));
+    }
+
+    @Override
     public List<Container> findAll(String filter) {
         List<Container> containers = new ArrayList<>();
-
         try {
-
-            Auth auth = this.authService.getAuth();
-            if (auth==null)
-                throw new Exception("Error in authentication");
-
-            String host = auth.getHost();
-            String user = auth.getUser();
-            String key = auth.getKey();
-
-            ExecuteRequest request =
-                    this.sshConnectionService
-                            .getConnectionForHost(host, user, key);
-
             String command = CONTAINER_LS_WITH_FORMAT;
             if (!StringUtils.isEmpty(filter)) {
                 command += FILTER_ARG + filter;
             }
-            request.setCommand(Arrays.asList(command));
-            ExecuteResult rs = shell.execute(request);
+            ExecuteResult rs = this.exec(command);
             if (rs.getReturnStatus() == ExecuteResult.CommandStatus.COMMAND_RAN_SUCCESSFUL &&
                     rs.getExitStatus() == 0) {
                 for (String line : rs.getOut()) {
-
                     Container container = new Container();
                     String[] fields = line.split(",");
                     container.setId(fields[0]);
                     container.setImage(fields[1]);
                     container.setCommand(fields[2]);
-
                     String ts = fields[3];
                     try {
                         Date createdAtDate =
@@ -99,10 +85,23 @@ public class ShellDockerClientContainerService implements ContainerService {
     }
 
 
-    public Optional<Container> findById(String imageId) {
-        return this.findAll().stream()
-                .filter(c->c.getId().trim().equalsIgnoreCase(imageId.trim()))
-                .findFirst();
+    @Override
+    public List<HashMap<String,Object>> inspect(String containerId) {
+        try {
+            ExecuteResult rs = this.exec(String.format(CONTAINER_INSPECT,containerId));
+            if (rs.getReturnStatus()== ExecuteResult.CommandStatus.COMMAND_RAN_SUCCESSFUL) {
+                StringBuilder output = new StringBuilder();
+                rs.getOut().stream().forEach(output::append);
+                logger.info(output.toString());
+                String json = output.toString();
+                List<HashMap<String,Object>> containers = new ObjectMapper().readValue(
+                        json,new TypeReference<List<HashMap<String,Object>>>(){});
+                return containers;
+            } else
+                return null;
+        } catch (Exception ex) {
+            return null;
+        }
     }
 
 }

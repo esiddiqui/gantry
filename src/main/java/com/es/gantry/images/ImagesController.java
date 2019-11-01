@@ -7,11 +7,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
-import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
 
 
@@ -45,5 +43,25 @@ public class ImagesController {
             return ResponseEntity.status(HttpStatus.EXPECTATION_FAILED).build();
         }
     }
+
+    @RequestMapping("/api/v1/images/{id}")
+    public ResponseEntity<List<HashMap<String,Object>>> inspectContainer(
+            @RequestHeader(value = "Authorization", defaultValue = "") String authHeader,
+            @PathVariable(value= "id")String containerId) {
+        try {
+            if (StringUtils.isEmpty(authHeader))
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            this.threadLocalAuth.lookupAuth(authHeader);
+            List<HashMap<String,Object>> images = this.service.inspect(containerId);
+            if (images!=null)
+                return ResponseEntity.ok(images);
+            else
+                return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+        } catch (Exception ex) {
+            logger.error(ex.getMessage());
+            return ResponseEntity.status(HttpStatus.EXPECTATION_FAILED).build();
+        }
+    }
+
 
 }
