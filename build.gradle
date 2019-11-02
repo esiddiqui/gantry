@@ -16,6 +16,7 @@ repositories {
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'com.es:es-shell:0.0.1-SNAPSHOT'
+    implementation "org.springframework.boot:spring-boot-starter-thymeleaf"
     runtimeClasspath 'org.apache.commons:commons-lang3:3.9'
     //lombok
     compileOnly "org.projectlombok:lombok:1.18.10"
