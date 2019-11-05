@@ -10,7 +10,6 @@ public class GantryWebController {
 
     @RequestMapping("/")
     public String ui(Model model) {
-        //model.addAttribute("title","Gantry API");
-        return "gantry";
+        return "index";
     }
 }
